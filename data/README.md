@@ -1,0 +1,4 @@
+# Dataset -- Texture Boundary in Metallography (TBM)
+
+aside from the common work on current relevant general image segmentation datasets (such as MMSegmentation, BSDS500, ADE20K, CityScape, Camouflage, Brodatz, Real World), we construct a database, namely Texture Boundary in Metallography (TBM), that is as general as possible, with annotations that correspond to the task of texture boundary detection, in microscopy. This database serves as a benchmark for our research and the following future works to establish the direct contribution to the needed sciences. In TBM, metallographic images of approximately 1.2 mm × 0.8mm were used, while an expert in material science tagged each image. Specifically, in TBM, we have created a dataset for metallographic texture boundary detection, consisting of cropped squares (128 × 128 pixels) of said metallographic scans with corresponding expert manual tags of grains’ boundary as ground truth (320 images).
+ 

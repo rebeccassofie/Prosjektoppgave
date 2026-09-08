@@ -132,7 +132,7 @@ def build_optimizer(name, params, learning_rate):
         raise ValueError(f"Unknown optimizer: {name}. Choose from adam, adamw, sgd, rmsprop.")
 
 
-def train_model(learning_rate=5e-4, pos_weight_value=1.437, batch_size=8,
+def train_model(learning_rate=5e-4, pos_weight_value=3.0, batch_size=8,
                  num_epochs=100, checkpoint_path="models/best_unet.pth",
                  save_history=True, verbose=True, use_augmentation=True,
                  optimizer_name="adamw", train_frac=0.8, val_frac=0.1):
@@ -180,11 +180,25 @@ def train_model(learning_rate=5e-4, pos_weight_value=1.437, batch_size=8,
     pos_weight = torch.tensor([pos_weight_value]).to(device)
     bce_loss = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     dice_loss = DiceLoss()
+
     def criterion(outputs, masks):
         bce = bce_loss(outputs, masks)
         dice = dice_loss(outputs, masks)
         return 0.5 * bce + 0.5 * dice
-    optimizer = build_optimizer(optimizer_name, model.parameters(), learning_rate)
+
+    optimizer = build_optimizer(
+        optimizer_name, 
+        model.parameters(), 
+        learning_rate
+    )
+
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=0.5,
+        patience=5,
+        min_lr=1e-6
+    )
 
     best_val_loss = float("inf")
     best_val_dice = -1.0
@@ -209,11 +223,21 @@ def train_model(learning_rate=5e-4, pos_weight_value=1.437, batch_size=8,
                 num_images += images.size(0)
 
         val_dice = dice_total / num_images
+
+        scheduler.step(val_loss)
+
         history.append((train_loss, val_loss, val_dice))
 
+        current_lr = optimizer.param_groups[0]["lr"]
+
         if verbose:
-            print(f"Epoch {epoch:3d}/{num_epochs} | train loss: {train_loss:.4f} | "
-                  f"val loss: {val_loss:.4f} | val dice: {val_dice:.4f}")
+            print(
+                f"Epoch {epoch:3d}/{num_epochs} | "
+                f"train loss: {train_loss:.4f} | "
+                f"val loss: {val_loss:.4f} | "
+                f"val dice: {val_dice:.4f} | "
+                f"lr: {current_lr:.2e}"
+            )
 
         if val_dice > best_val_dice:
             best_val_dice = val_dice

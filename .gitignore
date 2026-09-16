@@ -2,4 +2,4 @@
 *.pth
 *.jpg
 *.pyc
-.DS_Store
+*.DS_Store

@@ -1,0 +1,27 @@
+[project]
+name = "Prosjektoppgave"
+version = "0.0.1"
+description = "Image segmentation of microscopy data in steels."
+readme = "README.md"
+authors = [
+    { name = "Rebecca Sofie Waatsveen", email = "rebeccsw@stud.ntnu.no" },
+]
+requires-python = ">=3.12"
+dependencies = [
+    "albumentations>=2.0.8",
+    "jsonargparse[signatures]>=4.49.0",
+    "matplotlib>=3.10.9",
+    "numpy>=2.4.2",
+    "pandas>=3.0.1",
+    "pytest>=9.0.2",
+    "pytorch-lightning>=2.6.1",
+    "scikit-learn>=1.8.0",
+    "segmentation-models-pytorch>=0.5.0",
+    "tifffile>=2026.1.28",
+    "torch>=2.10.0",
+    "torchinfo>=1.8.0",
+    "torchmetrics>=1.9.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

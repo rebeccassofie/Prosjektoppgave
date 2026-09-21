@@ -13,9 +13,9 @@ from src.train import train_model
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image-dir", default="data/input_image")
-    parser.add_argument("--mask-dir", default="data/expert_label")
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--image-dir", default="datasets/cropped/SDA")
+    parser.add_argument("--mask-dir", default="datasets/cropped/PGs")
+    parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--pos-weight", type=float, default=3.0)

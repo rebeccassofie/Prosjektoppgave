@@ -1,33 +1,12 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
+from pathlib import Path
 
 from src.model import UNet
-from src.dataset import SegmentationDataset
-from src.losses import DiceLoss, dice_score
-
-
-def build_train_transform(rotate_limit=30, scale=(0.9, 1.1),
-                           translate_percent=(-0.05, 0.05),
-                           brightness_contrast_p=0.3, gamma_p=0.3):
-    """
-    Builds the training-time augmentation pipeline.
-
-    Rotate and Affine apply to BOTH image and mask together (keeps them
-    aligned). RandomBrightnessContrast and RandomGamma are pixel-level
-    transforms, so Albumentations only applies them to the image, never
-    the mask.
-    """
-    return A.Compose([
-        A.Rotate(limit=rotate_limit, p=0.5),
-        A.Affine(
-            scale=scale,
-            translate_percent=translate_percent,
-            p=0.5
-        ),
-        A.RandomBrightnessContrast(p=brightness_contrast_p),
-        A.RandomGamma(p=gamma_p),
-    ])
+from src.dataset import SegmentationDataset, build_train_transform
+from src.losses import DiceLoss
+from src.evaluate import dice_score
 
 
 def run_epoch(model, loader, criterion, device, optimizer=None):
@@ -73,7 +52,7 @@ def build_optimizer(name, params, learning_rate):
         raise ValueError(f"Unknown optimizer: {name}. Choose from adam, adamw, sgd, rmsprop.")
 
 
-def train_model(image_dir="data/input_image", mask_dir="data/expert_label",
+def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs",
                  learning_rate=5e-4, pos_weight_value=3.0, batch_size=8,
                  num_epochs=100, checkpoint_path="models/best_unet.pth",
                  history_path="output/history.csv",
@@ -87,6 +66,9 @@ def train_model(image_dir="data/input_image", mask_dir="data/expert_label",
     device = get_device()
     if verbose:
         print("Using device:", device)
+
+    Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(history_path).parent.mkdir(parents=True, exist_ok=True)
 
     # Two dataset instances sharing the same file list/order: one with
     # augmentation (used for the training split), one without (val/test).
@@ -116,7 +98,7 @@ def train_model(image_dir="data/input_image", mask_dir="data/expert_label",
     val_loader = DataLoader(val_set, batch_size=batch_size)
     test_loader = DataLoader(test_set, batch_size=batch_size)
 
-    model = UNet(n_class=1).to(device)
+    model = UNet(n_channels=1, n_classes=1).to(device)
     pos_weight = torch.tensor([pos_weight_value]).to(device)
     bce_loss = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     dice_loss = DiceLoss()

@@ -1,10 +1,9 @@
 import numpy as np
-import scipy.io
 import matplotlib.pyplot as plt
-from skimage.filters.rank import modal
-from skimage.morphology import disk
-from skimage.segmentation import find_boundaries
-from scripts.plot_denoised_mask import load_mask, resize_mask_to, handle_nan_labels, denoise_labels
+from src.mask_utils import (
+    load_mat_array, resize_mask_to, handle_nan_labels, 
+    denoise_labels, mask_to_binary_boundary
+)
 
 
 MASK_PATH = "datasets/raw/PGs/1/midt/010 parentProp_parentId.mat"   
@@ -13,18 +12,8 @@ ADP_PATH = "datasets/raw/SDA/1/midt/x100_processed/021 adp_1Dsig.npy"
 MODE_FILTER_RADIUS = 3
 
 
-def mask_to_binary_boundary(mask):
-    """
-    Returns a strictly binary image: 1.0 (white) = background, 0.0 (black)
-    = boundary. Only two classes -- no grain-ID color information kept.
-    """
-    boundaries = find_boundaries(mask, mode="outer")
-    binary_img = np.ones(mask.shape, dtype=float)
-    binary_img[boundaries] = 0.0
-    return binary_img
-
 def main():
-    mask = load_mask(MASK_PATH)
+    mask = load_mat_array(MASK_PATH)
     iq = np.load(IQ_PATH)
     adp = np.load(ADP_PATH)
  
@@ -54,8 +43,8 @@ def main():
         ax.axis("off")
  
     plt.tight_layout()
-    plt.savefig("experiments/plot_processed_data/binary_boundary_vs_raw.png", dpi=150)
-    print("\nSaved plot to experiments/plot_processed_data/binary_boundary_vs_raw.png")
+    plt.savefig("experiments/data_inspection/results/binary_boundary_vs_raw.png", dpi=150)
+    print("\nSaved plot to experiments/data_inspection/results/binary_boundary_vs_raw.png")
     plt.show()
  
  

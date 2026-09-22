@@ -22,7 +22,7 @@ from src.dataset import SegmentationDataset
 
 
 def main():
-    image_dir = "datasets/cropped/SDA"
+    image_dir = "datasets/cropped/SDA/IQ"
     mask_dir = "datasets/cropped/PGs"
     checkpoint_path = "models/best_unet.pth"
     history_path = "output/history.csv"

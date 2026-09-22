@@ -1,0 +1,13 @@
+parameter,value
+image_dir,datasets/cropped/SDA
+mask_dir,datasets/cropped/PGs
+learning_rate,0.0005
+pos_weight_value,8.0
+batch_size,8
+num_epochs,100
+use_augmentation,True
+optimizer_name,adamw
+train_frac,0.8
+val_frac,0.1
+
+la til batch normal på modellen i model.py, gjorde en markant forskjell

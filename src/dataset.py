@@ -9,6 +9,11 @@ import albumentations as A
 
 VALID_EXT = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp")
 
+# SDA crops are named <sample>_<location>_<mag>_<modality>_<idx>.ext (modality
+# is "iq" or "adp"), while their matching mask in PGs has no modality infix:
+# <sample>_<location>_<mag>_<idx>.ext. Strip it to find the mask filename.
+MODALITY_INFIX_RE = re.compile(r"_(iq|adp)(?=_\d+\.[^.]+$)")
+
 
 def build_train_transform(rotate_limit=30, scale=(0.9, 1.1),
                            translate_percent=(-0.05, 0.05),
@@ -16,6 +21,7 @@ def build_train_transform(rotate_limit=30, scale=(0.9, 1.1),
                            hflip_p=0.5, vflip_p=0.5):
     """
     Builds the training-time augmentation pipeline.
+
     Rotate, Affine, and the flips apply to BOTH image and mask together
     (keeps them aligned). RandomBrightnessContrast and RandomGamma are
     pixel-level transforms, so Albumentations only applies them to the
@@ -37,22 +43,19 @@ def build_train_transform(rotate_limit=30, scale=(0.9, 1.1),
 
 class SegmentationDataset(Dataset):
     """
-    Reads cropped IQ/ADP images from `image_dir` (datasets/cropped/SDA) and their
-    matching boundary masks from `mask_dir` (datasets/cropped/PGs), as produced by
-    scripts/generate_crops.py.
+    Reads crops from `image_dir` (cropped/SDA, containing both iq and adp
+    crops) and their matching boundary masks from `mask_dir` (cropped/PGs),
+    as produced by scripts/generate_crops.py.
 
-    Filenames follow:
-        mask:  <sample>_<location>_<mag>_<idx>.png
-        image: <sample>_<location>_<mag>_iq_<idx>.png
-               <sample>_<location>_<mag>_adp_<idx>.png
+    image_dir holds iq and adp crops together, named
+    <sample>_<location>_<mag>_<modality>_<idx>.png, while mask_dir holds one
+    mask per crop location, named <sample>_<location>_<mag>_<idx>.png (no
+    modality infix, since the same mask applies to both modalities). The
+    modality infix is stripped to look up each crop's mask.
+
+    "_full" images (the uncropped full-scan renders) are excluded; this
+    dataset only yields fixed-size crops.
     """
-
-    # captures everything up to "_iq_" or "_adp_" as the shared key, then
-    # the crop index -- e.g. "1_midt_x100_iq_3.png" -> key="1_midt_x100", idx="3"
-    IMAGE_PATTERN = re.compile(
-        r"^(?P<key>.+)_(?P<modality>iq|adp)_(?P<idx>\d+)\.(?:png|jpg|jpeg|tif|tiff|bmp)$",
-        re.IGNORECASE,
-    )
 
     def __init__(self, image_dir, mask_dir, transform=None):
         self.image_dir = image_dir
@@ -70,15 +73,8 @@ class SegmentationDataset(Dataset):
             if "_full." in filename.lower():
                 continue  # full-scan renders aren't crops, skip them
 
-            match = self.IMAGE_PATTERN.match(filename)
-            if not match:
-                skipped.append(filename)
-                continue
-
-            key, idx = match.group("key"), match.group("idx")
-            mask_filename = f"{key}_{idx}.png"
+            mask_filename = MODALITY_INFIX_RE.sub("", filename)
             mask_path = os.path.join(self.mask_dir, mask_filename)
-
             if not os.path.exists(mask_path):
                 skipped.append(filename)
                 continue
@@ -86,7 +82,6 @@ class SegmentationDataset(Dataset):
             samples.append({
                 "image_path": os.path.join(self.image_dir, filename),
                 "mask_path": mask_path,
-                "modality": match.group("modality").lower(),
             })
 
         if skipped:
@@ -103,7 +98,7 @@ class SegmentationDataset(Dataset):
     def __getitem__(self, idx):
         sample = self.samples[idx]
 
-        # iq/adp crops are single-channel grayscale, not RGB
+        # crops are single-channel grayscale, not RGB
         image = np.array(Image.open(sample["image_path"]).convert("L"))
         mask = np.array(Image.open(sample["mask_path"]).convert("L"))
 

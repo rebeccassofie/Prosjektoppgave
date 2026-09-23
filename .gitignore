@@ -3,3 +3,5 @@
 *.jpg
 *.pyc
 *.DS_Store
+*.csv
+*.txt

@@ -55,12 +55,24 @@ class SegmentationDataset(Dataset):
 
     "_full" images (the uncropped full-scan renders) are excluded; this
     dataset only yields fixed-size crops.
+
+    modality controls which crops are indexed: "both" (default), "iq", or
+    "adp".
     """
 
-    def __init__(self, image_dir, mask_dir, transform=None):
+    def __init__(self, image_dir, mask_dir, transform=None, modality="both"):
+        """
+        modality selects which crops to use: "both" (default, iq and adp),
+        "iq", or "adp".
+        """
+        if modality not in ("both", "iq", "adp"):
+            raise ValueError(
+                f"modality must be 'both', 'iq', or 'adp', got {modality!r}"
+            )
         self.image_dir = image_dir
         self.mask_dir = mask_dir
         self.transform = transform  # an Albumentations Compose, or None
+        self.modality = modality
         self.samples = self._build_index()
 
     def _build_index(self):
@@ -72,6 +84,12 @@ class SegmentationDataset(Dataset):
                 continue
             if "_full." in filename.lower():
                 continue  # full-scan renders aren't crops, skip them
+
+            match = MODALITY_INFIX_RE.search(filename)
+            if self.modality != "both" and (
+                match is None or match.group(1) != self.modality
+            ):
+                continue
 
             mask_filename = MODALITY_INFIX_RE.sub("", filename)
             mask_path = os.path.join(self.mask_dir, mask_filename)

@@ -16,12 +16,14 @@ def main():
     parser.add_argument("--optimizer", default="adamw",
                          choices=["adam", "adamw", "sgd", "rmsprop"])
     parser.add_argument("--experiments-dir", default="experiments/training")
+    parser.add_argument("--modality", default="both",
+                         choices=["both", "iq", "adp"])
     parser.add_argument("--num-prediction-samples", type=int, default=6)
     parser.add_argument("--no-augmentation", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
-    run_dir, best_val_loss, best_val_dice, test_loss, test_dice = train_model(
+    run_dir, best_val_loss, best_val_dice, best_train_loss, test_loss, test_dice = train_model(
         image_dir=args.image_dir,
         mask_dir=args.mask_dir,
         learning_rate=args.lr,
@@ -33,10 +35,11 @@ def main():
         use_augmentation=not args.no_augmentation,
         optimizer_name=args.optimizer,
         verbose=not args.quiet,
+        modality=args.modality,
     )
 
     print(f"\nRun saved to: {run_dir}")
-    print(f"Training complete. Best val loss: {best_val_loss:.4f}, best val dice: {best_val_dice:.4f}")
+    print(f"Training complete. Best train loss: {best_train_loss:.4f}, best val loss: {best_val_loss:.4f}, best val dice: {best_val_dice:.4f}")
     print(f"Final test loss: {test_loss:.4f}, final test dice: {test_dice:.4f}")
 
 

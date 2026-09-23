@@ -145,18 +145,22 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
                  num_epochs=100, experiments_dir="experiments/training",
                  num_prediction_samples=6,
                  save_history=True, verbose=True, use_augmentation=True,
-                 optimizer_name="adamw", train_frac=0.8, val_frac=0.1):
+                 optimizer_name="adamw", train_frac=0.8, val_frac=0.1,
+                 modality="both", save_visualizations=True):
     """Trains a UNet with the given hyperparameters.
- 
+
     Every call creates a new run directory at
     experiments_dir/<dd.mm.yy>/run<N>/, and saves everything from that run
     into it: params.csv (the actual hyperparameters used), the best
     checkpoint, history.csv, training_history.png, predictions.png, and a
     predicted_label/ folder with every predicted mask.
- 
+
     train_frac / val_frac are fractions of the total dataset (default 80%/10%,
     with the remaining 10% used as the test set).
- 
+
+    modality selects which crops from image_dir are used for training:
+    "both" (default), "iq", or "adp".
+
     Returns (run_dir, best_val_loss, best_val_dice, test_loss, test_dice).
     """
     run_dir = create_run_dir(experiments_dir)
@@ -171,7 +175,7 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
         "learning_rate": learning_rate, "pos_weight_value": pos_weight_value,
         "batch_size": batch_size, "num_epochs": num_epochs,
         "use_augmentation": use_augmentation, "optimizer_name": optimizer_name,
-        "train_frac": train_frac, "val_frac": val_frac,
+        "train_frac": train_frac, "val_frac": val_frac, "modality": modality,
     })
  
     device = get_device()
@@ -179,8 +183,8 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
         print("Using device:", device)
  
     aug = build_train_transform() if use_augmentation else None
-    train_dataset = SegmentationDataset(image_dir, mask_dir, transform=aug)
-    plain_dataset = SegmentationDataset(image_dir, mask_dir, transform=None)
+    train_dataset = SegmentationDataset(image_dir, mask_dir, transform=aug, modality=modality)
+    plain_dataset = SegmentationDataset(image_dir, mask_dir, transform=None, modality=modality)
  
     n = len(plain_dataset)
     train_split = int(n * train_frac)
@@ -221,6 +225,7 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
  
     best_val_loss = float("inf")
     best_val_dice = -1.0
+    best_train_loss = float("inf")
     history = []
  
     for epoch in range(1, num_epochs + 1):
@@ -256,6 +261,7 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
         if val_dice > best_val_dice:
             best_val_dice = val_dice
             best_val_loss = val_loss
+            best_train_loss = train_loss
             torch.save(model.state_dict(), checkpoint_path)
             if verbose:
                 print(f"  -> saved new best model (val dice {val_dice:.4f})")
@@ -284,15 +290,16 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
     if verbose:
         print(f"Test loss: {test_loss:.4f} | Test dice: {test_dice:.4f}")
  
-    # Visualization -- reuses the same best-checkpoint model already in
-    # memory, no need to reload it a second time.
-    plot_training_history(history, run_dir / "training_history.png")
-    plot_prediction_grid(model, plain_dataset, device, run_dir / "predictions.png",
-                          num_samples=num_prediction_samples)
-    save_predicted_masks(model, plain_dataset, device, run_dir / "predicted_label")
+    if save_visualizations:
+        # Reuses the same best-checkpoint model already in memory, no need
+        # to reload it a second time.
+        plot_training_history(history, run_dir / "training_history.png")
+        plot_prediction_grid(model, plain_dataset, device, run_dir / "predictions.png",
+                              num_samples=num_prediction_samples)
+        save_predicted_masks(model, plain_dataset, device, run_dir / "predicted_label")
  
-    if verbose:
-        print(f"Saved training_history.png, predictions.png, and predicted_label/ to {run_dir}")
- 
-    return run_dir, best_val_loss, best_val_dice, test_loss, test_dice
+        if verbose:
+            print(f"Saved training_history.png, predictions.png, and predicted_label/ to {run_dir}")
+
+    return run_dir, best_val_loss, best_val_dice, best_train_loss, test_loss, test_dice
  

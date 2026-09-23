@@ -65,9 +65,15 @@ def save_run_params(run_dir, params):
             writer.writerow([key, value])
  
  
-def save_predicted_masks(model, dataset, device, output_dir):
+def save_predicted_masks(model, dataset, device, output_dir, idx_to_split=None):
     """Runs inference over every sample in dataset and saves the predicted
-    mask, using the same filename as the original image crop."""
+    mask, using the same filename as the original image crop.
+ 
+    idx_to_split: optional {index: "train"|"val"|"test"} mapping (built
+    from the same train_idx/val_idx/test_idx used to split the data).
+    When given, each prediction is saved into a train/, val/, or test/
+    subfolder of output_dir instead of one flat folder, so it's clear
+    which split each predicted mask actually came from."""
     output_dir.mkdir(parents=True, exist_ok=True)
     model.eval()
     with torch.no_grad():
@@ -80,7 +86,15 @@ def save_predicted_masks(model, dataset, device, output_dir):
             # white-background/black-line, matching the original masks.
             out_img = ((1 - pred_mask) * 255).astype("uint8")
             filename = Path(sample["image_path"]).name
-            Image.fromarray(out_img).save(output_dir / filename)
+ 
+            if idx_to_split is not None:
+                split_dir = output_dir / idx_to_split[i]
+                split_dir.mkdir(parents=True, exist_ok=True)
+                save_path = split_dir / filename
+            else:
+                save_path = output_dir / filename
+ 
+            Image.fromarray(out_img).save(save_path)
  
  
 def plot_training_history(history, save_path):

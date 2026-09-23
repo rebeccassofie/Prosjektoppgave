@@ -20,6 +20,7 @@ def main():
                          choices=["both", "iq", "adp"])
     parser.add_argument("--num-prediction-samples", type=int, default=6)
     parser.add_argument("--no-augmentation", action="store_true")
+    parser.add_argument("--no-lr-scheduler", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
@@ -33,6 +34,7 @@ def main():
         experiments_dir=args.experiments_dir,
         num_prediction_samples=args.num_prediction_samples,
         use_augmentation=not args.no_augmentation,
+        use_lr_scheduler=not args.no_lr_scheduler,
         optimizer_name=args.optimizer,
         verbose=not args.quiet,
         modality=args.modality,

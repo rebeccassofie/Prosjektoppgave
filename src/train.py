@@ -160,7 +160,8 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
                  num_prediction_samples=6,
                  save_history=True, verbose=True, use_augmentation=True,
                  optimizer_name="adamw", train_frac=0.8, val_frac=0.1,
-                 modality="both", save_visualizations=True):
+                 modality="both", save_visualizations=True,
+                 use_lr_scheduler=True):
     """Trains a UNet with the given hyperparameters.
 
     Every call creates a new run directory at
@@ -190,6 +191,7 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
         "batch_size": batch_size, "num_epochs": num_epochs,
         "use_augmentation": use_augmentation, "optimizer_name": optimizer_name,
         "train_frac": train_frac, "val_frac": val_frac, "modality": modality,
+        "use_lr_scheduler": use_lr_scheduler,
     })
  
     device = get_device()
@@ -233,9 +235,11 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
  
     optimizer = build_optimizer(optimizer_name, model.parameters(), learning_rate)
  
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=5, min_lr=1e-6
-    )
+        scheduler = None
+    if use_lr_scheduler:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=5, min_lr=1e-6
+        )
  
     best_val_loss = float("inf")
     best_val_dice = -1.0
@@ -259,7 +263,8 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
                 num_images += images.size(0)
  
         val_dice = dice_total / num_images
-        scheduler.step(val_loss)
+        if scheduler is not None:
+            scheduler.step(val_loss)
         history.append((train_loss, val_loss, val_dice))
         current_lr = optimizer.param_groups[0]["lr"]
  

@@ -293,13 +293,6 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
             if verbose:
                 print(f"  -> saved new best model (val dice {val_dice:.4f})")
  
-    if save_history:
-        with open(history_path, "w") as f:
-            f.write("train_loss,val_loss,val_dice\n")
-            for train_loss, val_loss, val_dice in history:
-                f.write(f"{train_loss},{val_loss},{val_dice}\n")
-        if verbose:
-            print(f"Saved training history to {history_path}")
  
     # Final, one-time evaluation on the held-out test set using the best
     # checkpoint (selected via validation, never touched by test data).
@@ -316,6 +309,18 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
  
     if verbose:
         print(f"Test loss: {test_loss:.4f} | Test dice: {test_dice:.4f}")
+
+    if save_history:
+        with open(history_path, "w") as f:
+            f.write("train_loss,val_loss,val_dice\n")
+            for train_loss, val_loss, val_dice in history:
+                f.write(f"{train_loss},{val_loss},{val_dice}\n")
+            f.write("\nbest_train_loss,best_val_loss,best_val_dice")
+            f.write(f"\n{best_train_loss},{best_val_loss},{best_val_dice}\n")
+            f.write("\ntest_loss,test_dice")
+            f.write(f"\n{test_loss},{test_dice}")
+        if verbose:
+            print(f"Saved training history to {history_path}")
  
     if save_visualizations:
         # Reuses the same best-checkpoint model already in memory, no need

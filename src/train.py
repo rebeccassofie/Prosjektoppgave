@@ -214,6 +214,14 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
     train_idx = indices[:train_split]
     val_idx = indices[train_split:train_split + val_split]
     test_idx = indices[train_split + val_split:]
+
+    idx_to_split = {}
+    for i in train_idx:
+        idx_to_split[i] = "train"
+    for i in val_idx:
+        idx_to_split[i] = "val"
+    for i in test_idx:
+        idx_to_split[i] = "test"
  
     train_set = Subset(train_dataset, train_idx)
     val_set = Subset(plain_dataset, val_idx)
@@ -235,7 +243,7 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
  
     optimizer = build_optimizer(optimizer_name, model.parameters(), learning_rate)
  
-        scheduler = None
+    scheduler = None
     if use_lr_scheduler:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", factor=0.5, patience=5, min_lr=1e-6
@@ -313,9 +321,9 @@ def train_model(image_dir="datasests/cropped/SDA", mask_dir="datasets/cropped/PG
         # Reuses the same best-checkpoint model already in memory, no need
         # to reload it a second time.
         plot_training_history(history, run_dir / "training_history.png")
-        plot_prediction_grid(model, plain_dataset, device, run_dir / "predictions.png",
+        plot_prediction_grid(model, test_set, device, run_dir / "predictions.png", #always test
                               num_samples=num_prediction_samples)
-        save_predicted_masks(model, plain_dataset, device, run_dir / "predicted_label")
+        save_predicted_masks(model, plain_dataset, device, run_dir / "predicted_label", idx_to_split)
  
         if verbose:
             print(f"Saved training_history.png, predictions.png, and predicted_label/ to {run_dir}")

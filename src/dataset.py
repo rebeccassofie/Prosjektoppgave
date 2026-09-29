@@ -15,27 +15,15 @@ VALID_EXT = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp")
 MODALITY_INFIX_RE = re.compile(r"_(iq|adp)(?=_\d+\.[^.]+$)")
 
 
-def build_train_transform(rotate_limit=30, scale=(0.9, 1.1),
-                           translate_percent=(-0.05, 0.05),
-                           brightness_contrast_p=0.3, gamma_p=0.3,
-                           hflip_p=0.5, vflip_p=0.5):
+def build_train_transform(brightness_contrast_p=0.3, gamma_p=0.3,
+                           hflip_p=0.5, vflip_p=0.5):  #undersøk hva alle gjør, få ut på bilder
     """
     Builds the training-time augmentation pipeline.
-
-    Rotate, Affine, and the flips apply to BOTH image and mask together
-    (keeps them aligned). RandomBrightnessContrast and RandomGamma are
-    pixel-level transforms, so Albumentations only applies them to the
-    image, never the mask.
     """
     return A.Compose([
         A.HorizontalFlip(p=hflip_p),
         A.VerticalFlip(p=vflip_p),
-        A.Rotate(limit=rotate_limit, p=0.5),
-        A.Affine(
-            scale=scale,
-            translate_percent=translate_percent,
-            p=0.5
-        ),
+        A.RandomRotate90(p=0.5), #90, 180, 270, hvis den roterer en annen måte vil den fylle inn med piksler
         A.RandomBrightnessContrast(p=brightness_contrast_p),
         A.RandomGamma(p=gamma_p),
     ])

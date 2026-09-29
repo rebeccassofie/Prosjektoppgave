@@ -16,7 +16,7 @@ def main():
     parser.add_argument("--optimizer", default="adamw",
                          choices=["adam", "adamw", "sgd", "rmsprop"])
     parser.add_argument("--experiments-dir", default="experiments/training")
-    parser.add_argument("--modality", default="both",
+    parser.add_argument("--modality", default="adp",
                          choices=["both", "iq", "adp"])
     parser.add_argument("--num-prediction-samples", type=int, default=6)
     parser.add_argument("--no-augmentation", action="store_true")

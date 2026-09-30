@@ -9,7 +9,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--image-dir", default="datasets/cropped/SDA")
     parser.add_argument("--mask-dir", default="datasets/cropped/PGs")
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--pos-weight", type=float, default=3.0)
@@ -18,6 +18,9 @@ def main():
     parser.add_argument("--experiments-dir", default="experiments/training")
     parser.add_argument("--modality", default="adp",
                          choices=["both", "iq", "adp"])
+    parser.add_argument("--metric", default="boundary_f1",
+                         choices=["boundary_f1", "dice"])
+    parser.add_argument("--tolerance", type=int, default=3) #hvor mange pixler boundarien kan være
     parser.add_argument("--num-prediction-samples", type=int, default=6)
     parser.add_argument("--no-augmentation", action="store_true")
     parser.add_argument("--no-lr-scheduler", action="store_true")
@@ -38,6 +41,8 @@ def main():
         optimizer_name=args.optimizer,
         verbose=not args.quiet,
         modality=args.modality,
+        metric=args.metric,
+        tolerance=args.tolerance,
     )
 
     print(f"\nRun saved to: {run_dir}")

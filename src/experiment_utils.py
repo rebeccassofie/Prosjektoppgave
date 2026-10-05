@@ -5,10 +5,10 @@ from pathlib import Path
 def create_run_dir(base_dir="experiments/training"):
     """
     Creates and returns a new run directory:
-        <base_dir>/<dd.mm.yy>/run1/
-        <base_dir>/<dd.mm.yy>/run2/
+        <base_dir>/<mm.dd.yy>/run1/
+        <base_dir>/<mm.dd.yy>/run2/
     """
-    date_str = datetime.now().strftime("%d.%m.%y")
+    date_str = datetime.now().strftime("%m.%d.%y")
     date_dir = Path(base_dir) / date_str
     date_dir.mkdir(parents=True, exist_ok=True)
 

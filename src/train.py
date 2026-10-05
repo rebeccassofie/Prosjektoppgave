@@ -167,7 +167,7 @@ def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs
     """Trains a UNet with the given hyperparameters.
 
     Every call creates a new run directory at
-    experiments_dir/<dd.mm.yy>/run<N>/, and saves everything from that run
+    experiments_dir/<mm.dd.yy>/run<N>/, and saves everything from that run
     into it: params.csv (the actual hyperparameters used), the best
     checkpoint, history.csv, training_history.png, predictions.png, and a
     predicted_label/ folder with every predicted mask.

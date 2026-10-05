@@ -13,7 +13,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--pos-weight", type=float, default=3.0)
-    parser.add_argument("--optimizer", default="adamw",
+    parser.add_argument("--optimizer", default="rmsprop",
                          choices=["adam", "adamw", "sgd", "rmsprop"])
     parser.add_argument("--experiments-dir", default="experiments/training")
     parser.add_argument("--modality", default="adp",
@@ -21,13 +21,15 @@ def main():
     parser.add_argument("--metric", default="boundary_f1",
                          choices=["boundary_f1", "dice"])
     parser.add_argument("--tolerance", type=int, default=3) #hvor mange pixler boundarien kan være
+    parser.add_argument("--momentum", type=float, default=0.9)
+    parser.add_argument("--beta2", type=float, default=0.95)
     parser.add_argument("--num-prediction-samples", type=int, default=6)
     parser.add_argument("--no-augmentation", action="store_true")
     parser.add_argument("--no-lr-scheduler", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
-    run_dir, best_val_loss, best_val_dice, best_train_loss, test_loss, test_dice = train_model(
+    run_dir, best_val_loss, best_val_score, best_train_loss, test_loss, test_score = train_model(
         image_dir=args.image_dir,
         mask_dir=args.mask_dir,
         learning_rate=args.lr,
@@ -43,11 +45,13 @@ def main():
         modality=args.modality,
         metric=args.metric,
         tolerance=args.tolerance,
+        momentum=args.momentum,
+        beta2=args.beta2,
     )
 
     print(f"\nRun saved to: {run_dir}")
-    print(f"Training complete. Best train loss: {best_train_loss:.4f}, best val loss: {best_val_loss:.4f}, best val dice: {best_val_dice:.4f}")
-    print(f"Final test loss: {test_loss:.4f}, final test dice: {test_dice:.4f}")
+    print(f"Training complete. Best train loss: {best_train_loss:.4f}, best val loss: {best_val_loss:.4f}, best val {args.metric}: {best_val_score:.4f}")
+    print(f"Final test loss: {test_loss:.4f}, final test {args.metric}: {test_score:.4f}")
 
 
 if __name__ == "__main__":

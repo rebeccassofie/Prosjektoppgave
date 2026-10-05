@@ -7,9 +7,7 @@ from src.experiment_utils import create_run_dir
 from src.train import train_model
 
 PARAM_GRID = {
-    "lr": [1e-4, 5e-4, 1e-3],
-    "pos_weight": [3, 8, 11.2, 14],
-    "optimizer": ["adam", "adamw", "sgd", "rmsprop"],
+    "lr": [1e-5, 3e-5, 1e-4, 3e-4, 5e-4, 1e-3, 3e-3],
 }
 
 
@@ -27,10 +25,14 @@ def main():
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--experiments-dir", default="experiments/grid_search")
     parser.add_argument("--top-n", type=int, default=10)
+    parser.add_argument("--pos-weight", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--optimizer", default="rmsprop")
     parser.add_argument("--modality", default="adp")
     parser.add_argument("--metric", default="boundary_f1", choices=["boundary_f1", "dice"])
     parser.add_argument("--tolerance", type=int, default=3)
+    parser.add_argument("--momentum", type=float, default=0.9)
+    parser.add_argument("--beta2", type=float, default=0.95)
     args = parser.parse_args()
 
     keys = list(PARAM_GRID.keys())
@@ -56,18 +58,20 @@ def main():
             image_dir=args.image_dir,
             mask_dir=args.mask_dir,
             learning_rate=params["lr"],
-            pos_weight_value=params["pos_weight"],
+            pos_weight_value=args.pos_weight,
             batch_size=args.batch_size,
             num_epochs=args.epochs,
             experiments_dir=trials_dir,
             use_augmentation=True,
-            optimizer_name=params["optimizer"],
+            optimizer_name=args.optimizer,
             verbose=False,
             modality=args.modality,
             metric=args.metric,
             tolerance=args.tolerance,
             save_history=False,
             save_visualizations=False,
+            momentum=args.momentum,
+            beta2=args.beta2,
         )
         elapsed = time.time() - start
 

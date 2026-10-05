@@ -43,16 +43,20 @@ def get_device():
     return torch.device("cpu")
 
 
-def build_optimizer(name, params, learning_rate):
+def build_optimizer(name, params, learning_rate, momentum=0.9, beta2=0.999):
+    """
+    momentum: beta1 for Adam/AdamW, `momentum` for SGD and RMSprop.
+    beta2:    beta2 for Adam/AdamW, `alpha` for RMSprop (not used by SGD).
+    """
     name = name.lower()
     if name == "adam":
-        return torch.optim.Adam(params, lr=learning_rate)
+        return torch.optim.Adam(params, lr=learning_rate, betas=(momentum, beta2))
     elif name == "adamw":
-        return torch.optim.AdamW(params, lr=learning_rate)
+        return torch.optim.AdamW(params, lr=learning_rate, betas=(momentum, beta2))
     elif name == "sgd":
-        return torch.optim.SGD(params, lr=learning_rate, momentum=0.9)
+        return torch.optim.SGD(params, lr=learning_rate, momentum=momentum)
     elif name == "rmsprop":
-        return torch.optim.RMSprop(params, lr=learning_rate)
+        return torch.optim.RMSprop(params, lr=learning_rate, momentum=momentum, alpha=beta2)
     else:
         raise ValueError(f"Unknown optimizer: {name}. Choose from adam, adamw, sgd, rmsprop.")
 
@@ -99,11 +103,11 @@ def save_predicted_masks(model, dataset, device, output_dir, idx_to_split=None):
 
 
 def plot_training_history(history, save_path, metric="boundary_f1"):
-    train_losses, val_losses, val_scores = zip(*history)
+    train_losses, val_losses, val_scores, lrs = zip(*history)
     epochs = range(1, len(train_losses) + 1)
     metric_label = "boundary F1" if metric == "boundary_f1" else "Dice"
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4))
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(16, 4))
 
     ax1.plot(epochs, train_losses, marker="o", label="Train loss")
     ax1.plot(epochs, val_losses, marker="o", label="Val loss")
@@ -116,6 +120,12 @@ def plot_training_history(history, save_path, metric="boundary_f1"):
     ax2.set_xlabel("Epoch")
     ax2.set_ylabel(f"Validation {metric_label} score")
     ax2.set_title(f"Validation {metric_label} score per epoch")
+
+    ax3.plot(epochs, lrs, marker="o", color="purple")
+    ax3.set_yscale("log")
+    ax3.set_xlabel("Epoch")
+    ax3.set_ylabel("Learning rate")
+    ax3.set_title("Learning rate per epoch")
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=150)
@@ -163,6 +173,7 @@ def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs
                  save_history=True, verbose=True, use_augmentation=True,
                  optimizer_name="adamw", train_frac=0.8, val_frac=0.1,
                  modality="both", metric="boundary_f1", tolerance=3,
+                 momentum=0.9, beta2=0.95,
                  save_visualizations=True, use_lr_scheduler=True):
     """Trains a UNet with the given hyperparameters.
 
@@ -182,6 +193,9 @@ def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs
     line thickness and allows a `tolerance`-pixel shift) or "dice" (pixel
     Dice). The best checkpoint is chosen by this score.
 
+    momentum is beta1 for Adam/AdamW and `momentum` for SGD/RMSprop; beta2 is
+    beta2 for Adam/AdamW and `alpha` for RMSprop (unused for SGD).
+
     Returns (run_dir, best_val_loss, best_val_score, best_train_loss,
     test_loss, test_score).
     """
@@ -200,6 +214,7 @@ def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs
         "learning_rate": learning_rate, "pos_weight_value": pos_weight_value,
         "batch_size": batch_size, "num_epochs": num_epochs,
         "use_augmentation": use_augmentation, "optimizer_name": optimizer_name,
+        "momentum": momentum, "beta2": beta2 if optimizer_name.lower() != "sgd" else "",
         "train_frac": train_frac, "val_frac": val_frac, "modality": modality,
         "metric": metric, "tolerance": tolerance if metric == "boundary_f1" else "",
         "use_lr_scheduler": use_lr_scheduler,
@@ -259,12 +274,13 @@ def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs
         dice = dice_loss(outputs, masks)
         return 0.5 * bce + 0.5 * dice
 
-    optimizer = build_optimizer(optimizer_name, model.parameters(), learning_rate)
+    optimizer = build_optimizer(optimizer_name, model.parameters(), learning_rate,
+                                momentum=momentum, beta2=beta2)
 
     scheduler = None
     if use_lr_scheduler:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", factor=0.5, patience=5, min_lr=1e-6
+            optimizer, mode="min", factor=0.5, patience=6, min_lr=1e-6
         )
 
     best_val_loss = float("inf")
@@ -273,15 +289,22 @@ def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs
     history = []
 
     for epoch in range(1, num_epochs + 1):
+        # LR used for this epoch (read before the scheduler may lower it)
+        current_lr = optimizer.param_groups[0]["lr"]
         train_loss = run_epoch(model, train_loader, criterion, device, optimizer)
         # loss and score in a single pass over the validation set
         val_loss, val_score = evaluate_model(model, val_loader, criterion, device,
                                              metric=metric, tolerance=tolerance)
 
+        #to avoid ugly plots
+        if train_loss > 1:
+            train_loss = 1   
+        if val_loss > 1:
+            val_loss = 1                                  
+
         if scheduler is not None:
             scheduler.step(val_loss)
-        history.append((train_loss, val_loss, val_score))
-        current_lr = optimizer.param_groups[0]["lr"]
+        history.append((train_loss, val_loss, val_score, current_lr))
 
         if verbose:
             print(
@@ -311,9 +334,9 @@ def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs
 
     if save_history:
         with open(history_path, "w") as f:
-            f.write(f"train_loss,val_loss,val_{metric}\n")
-            for train_loss, val_loss, val_score in history:
-                f.write(f"{train_loss},{val_loss},{val_score}\n")
+            f.write(f"train_loss,val_loss,val_{metric},lr\n")
+            for train_loss, val_loss, val_score, lr in history:
+                f.write(f"{train_loss},{val_loss},{val_score},{lr}\n")
             f.write(f"\nbest_train_loss,best_val_loss,best_val_{metric}")
             f.write(f"\n{best_train_loss},{best_val_loss},{best_val_score}\n")
             f.write(f"\ntest_loss,test_{metric}")

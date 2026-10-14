@@ -2,7 +2,9 @@
 Walks every .mat mask under MASK_ROOT, pairs each with its iq/adp .npy
 files under IMAGE_ROOT, and for each pair:
 
-  1. Loads, aligns (transpose-fix), NaN-cleans, and denoises the mask
+  1. Loads the mask, aligns it to the IQ/ADP maps (automatic flip/rotation
+     check, see align_mask_to_image), fills NaN pixels with the nearest
+     grain, and removes tiny regions
   2. Converts it to a binary boundary image (white background, black lines)
   3. Saves the FULL boundary mask as <sample>_<location>_<mag>_full.png
   4. Crops the boundary mask, iq, and adp into non-overlapping
@@ -22,17 +24,17 @@ import numpy as np
 from skimage.segmentation import find_boundaries
 
 from src.mask_utils import (
-    build_pairs, load_mat_array, resize_mask_to,
-    handle_nan_labels, denoise_labels, mask_to_binary_boundary,
+    build_pairs, load_mat_array, align_mask_to_image,
+    fill_nan_nearest, denoise_labels, mask_to_binary_boundary,
     crop_non_overlapping, save_float01_as_png, normalize_for_display,
     remove_small_regions
 )
 
 MASK_ROOT = "datasets/raw/PGs"
 IMAGE_ROOT = "datasets/raw/SDA"
-OUTPUT_DIR = "datasets/cropped"
-CROP_SIZE = 128
-MODE_FILTER_RADIUS = 3
+OUTPUT_DIR = "datasets/resized512"
+CROP_SIZE = 512
+MODE_FILTER_RADIUS = 0   # 0 = off (was 3); the mode filter erased real boundaries
 MIN_REGION_SIZE = 50
 
 
@@ -47,8 +49,9 @@ def process_pair(pair, output_dir, crop_size, mode_filter_radius):
 
     print(f"mask raw: shape={mask.shape} | iq: shape={iq.shape} | adp: shape={adp.shape}")
 
-    mask = resize_mask_to(mask, iq.shape)
-    mask = handle_nan_labels(mask)
+    mask, orientation, margin = align_mask_to_image(mask.astype(float), iq, adp)
+    print(f"aligned mask with '{orientation}' (margin {margin:.2f})")
+    mask = fill_nan_nearest(mask)
     denoised = denoise_labels(mask, radius=mode_filter_radius)
     denoised = remove_small_regions(denoised, min_size=MIN_REGION_SIZE)
     denoised = denoised.astype(np.int64)

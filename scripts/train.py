@@ -10,14 +10,14 @@ def main():
     parser.add_argument("--image-dir", default="datasets/cropped/SDA")
     parser.add_argument("--mask-dir", default="datasets/cropped/PGs")
     parser.add_argument("--epochs", type=int, default=80)
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--lr", type=float, default=5e-4)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--lr", type=float, default=0.0003)
     parser.add_argument("--pos-weight", type=float, default=3.0)
     parser.add_argument("--optimizer", default="rmsprop",
                          choices=["adam", "adamw", "sgd", "rmsprop"])
     parser.add_argument("--experiments-dir", default="experiments/training")
     parser.add_argument("--modality", default="adp",
-                         choices=["both", "iq", "adp"])
+                         choices=["both", "iq", "adp", "stacked"])
     parser.add_argument("--metric", default="boundary_f1",
                          choices=["boundary_f1", "dice"])
     parser.add_argument("--tolerance", type=int, default=3) #hvor mange pixler boundarien kan være

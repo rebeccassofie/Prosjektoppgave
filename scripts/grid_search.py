@@ -25,7 +25,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--experiments-dir", default="experiments/grid_search")
     parser.add_argument("--top-n", type=int, default=10)
-    parser.add_argument("--pos-weight", type=int, default=3)
+    parser.add_argument("--pos-weight", type=float, default=3.0)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--optimizer", default="rmsprop")
     parser.add_argument("--modality", default="adp")

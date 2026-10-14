@@ -26,7 +26,9 @@ def load_mat_array(path):
 
 
 def resize_mask_to(mask, target_shape):
-    """Aligns mask onto target_shape (most likely case here: transpose)."""
+    """OLD alignment, kept only for reference -- use align_mask_to_image().
+    It guesses from the shape alone, which fails for square scans and for
+    scans that need another flip (2_910nr5_x200 needs 'anti-transpose')."""
     if mask.shape == target_shape:
         return mask
  
@@ -38,6 +40,75 @@ def resize_mask_to(mask, target_shape):
     from scipy.ndimage import zoom
     zoom_factors = (target_shape[0] / mask.shape[0], target_shape[1] / mask.shape[1])
     return zoom(mask, zoom_factors, order=0)
+
+
+# All 8 ways a 2D map can be flipped/rotated. MTEX exports are usually the
+# transpose of the IQ/ADP maps, but not always (e.g. 2_910nr5_x200).
+ORIENTATIONS = {
+    "as-is":            lambda a: a,
+    "transpose":        lambda a: a.T,
+    "flip up-down":     lambda a: np.flipud(a),
+    "flip left-right":  lambda a: np.fliplr(a),
+    "rotate 180":       lambda a: np.rot90(a, 2),
+    "rotate 90":        lambda a: np.rot90(a, 1),
+    "rotate 270":       lambda a: np.rot90(a, 3),
+    "anti-transpose":   lambda a: np.rot90(a, 2).T,
+}
+
+
+def fill_nan_nearest(mask):
+    """Gives every NaN (unindexed / not reconstructed) pixel the grain ID of
+    its nearest labelled pixel, like MTEX grains fill unindexed points.
+    Unlike one shared 'sentinel' label, this draws no boundaries around
+    NaN patches."""
+    nan = np.isnan(mask)
+    if not nan.any():
+        return mask
+    idx = ndi.distance_transform_edt(nan, return_distances=False, return_indices=True)
+    return mask[tuple(idx)]
+
+
+def _zscore(img):
+    img = np.asarray(img, dtype=float)
+    good = np.isfinite(img)
+    out = (img - img[good].mean()) / (img[good].std() + 1e-9)
+    out[~good] = 0.0
+    return out
+
+
+def orientation_scores(mask, iq, adp):
+    """For every flip/rotation of `mask` that has the image's shape: how much
+    lower IQ and ADP are on its grain boundaries than elsewhere (in standard
+    deviations). The correct orientation scores clearly highest."""
+    iq_z, adp_z = _zscore(iq), _zscore(adp)
+    filled = fill_nan_nearest(np.asarray(mask, dtype=float))
+    scores = {}
+    for name, fn in ORIENTATIONS.items():
+        cand = fn(filled)
+        if cand.shape != iq.shape:
+            continue
+        b = find_boundaries(cand.astype(np.int64), mode="inner")
+        if b.any() and (~b).any():
+            scores[name] = 0.5 * ((iq_z[~b].mean() - iq_z[b].mean())
+                                  + (adp_z[~b].mean() - adp_z[b].mean()))
+    return scores
+
+
+def align_mask_to_image(mask, iq, adp, min_margin=0.1):
+    """Flips/rotates the MTEX label map so it lines up with the IQ/ADP maps,
+    choosing the orientation whose boundaries match the image best.
+    Raises an error instead of guessing (or stretching) when the shapes
+    don't fit or the choice is unclear."""
+    scores = orientation_scores(mask, iq, adp)
+    if not scores:
+        raise ValueError(f"No flip/rotation of mask {mask.shape} matches image shape {iq.shape}.")
+    ranked = sorted(scores, key=scores.get, reverse=True)
+    best = ranked[0]
+    margin = scores[best] - (scores[ranked[1]] if len(ranked) > 1 else 0.0)
+    if margin < min_margin:
+        raise ValueError(f"Orientation unclear (best '{best}', margin {margin:.3f}); "
+                         f"scores: {scores}. Check this scan by eye.")
+    return ORIENTATIONS[best](mask), best, margin
 
 
 def handle_nan_labels(mask):
@@ -53,7 +124,11 @@ def handle_nan_labels(mask):
 
 
 def denoise_labels(mask, radius=3):
-    """Majority/mode filter over a disk neighborhood to clean speckle noise."""
+    """Majority/mode filter over a disk neighborhood to clean speckle noise.
+    radius=0 skips it (default in generate_crops now: after fill_nan_nearest
+    there is little speckle left, and the filter erases real thin grains)."""
+    if radius <= 0:
+        return mask
     unique_vals, remapped = np.unique(mask, return_inverse=True)
     remapped = remapped.reshape(mask.shape).astype(np.uint16)
     denoised_remapped = modal(remapped, disk(radius))

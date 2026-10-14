@@ -90,7 +90,7 @@ def save_predicted_masks(model, dataset, device, output_dir, idx_to_split=None):
             # 1 = boundary line, 0 = background -- invert back to
             # white-background/black-line, matching the original masks.
             out_img = ((1 - pred_mask) * 255).astype("uint8")
-            filename = Path(sample["image_path"]).name
+            filename = sample["name"]
 
             if idx_to_split is not None:
                 split_dir = output_dir / idx_to_split[i]
@@ -114,6 +114,7 @@ def plot_training_history(history, save_path, metric="boundary_f1"):
     ax1.set_xlabel("Epoch")
     ax1.set_ylabel("Loss")
     ax1.set_title("Loss per epoch")
+    ax1.set_ylim(top=1.0) #avoid ugly val loss plot
     ax1.legend()
 
     ax2.plot(epochs, val_scores, marker="o", color="green")
@@ -132,15 +133,21 @@ def plot_training_history(history, save_path, metric="boundary_f1"):
     plt.close(fig)
 
 
-def plot_prediction_grid(model, dataset, device, save_path, num_samples=6):
+def plot_prediction_grid(model, dataset, device, save_path, num_samples=6,
+                         channel_names=("Input image",)):
+    """One row per sample: every input channel, then ground truth, then
+    prediction. channel_names labels the input columns."""
     num_samples = min(num_samples, len(dataset))
-    fig, axes = plt.subplots(num_samples, 3, figsize=(9, 3 * num_samples))
+    n_in = len(channel_names)
+    n_cols = n_in + 2
+    fig, axes = plt.subplots(num_samples, n_cols, figsize=(3 * n_cols, 3 * num_samples))
     if num_samples == 1:
         axes = axes[None, :]  # keep indexing consistent for the single-sample case
 
-    axes[0, 0].set_title("Input image")
-    axes[0, 1].set_title("Ground truth mask")
-    axes[0, 2].set_title("Predicted mask")
+    for c, name in enumerate(channel_names):
+        axes[0, c].set_title(name)
+    axes[0, n_in].set_title("Ground truth mask")
+    axes[0, n_in + 1].set_title("Predicted mask")
 
     model.eval()
     with torch.no_grad():
@@ -149,15 +156,15 @@ def plot_prediction_grid(model, dataset, device, save_path, num_samples=6):
             pred = torch.sigmoid(model(image.unsqueeze(0).to(device)))
             pred_mask = (pred > 0.5).float()
 
-            # image is single-channel (1, H, W), not RGB
-            img_np = image.squeeze(0).numpy()
+            # image is (C, H, W): one grayscale panel per channel
             gt_np = gt_mask.squeeze(0).numpy()
             pred_np = pred_mask.squeeze(0).squeeze(0).cpu().numpy()
 
-            axes[i, 0].imshow(img_np, cmap="gray")
+            for c in range(n_in):
+                axes[i, c].imshow(image[c].numpy(), cmap="gray")
             # invert so lines display as black-on-white, like the originals
-            axes[i, 1].imshow(1 - gt_np, cmap="gray", vmin=0, vmax=1)
-            axes[i, 2].imshow(1 - pred_np, cmap="gray", vmin=0, vmax=1)
+            axes[i, n_in].imshow(1 - gt_np, cmap="gray", vmin=0, vmax=1)
+            axes[i, n_in + 1].imshow(1 - pred_np, cmap="gray", vmin=0, vmax=1)
             for ax in axes[i]:
                 ax.axis("off")
 
@@ -167,8 +174,8 @@ def plot_prediction_grid(model, dataset, device, save_path, num_samples=6):
 
 
 def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs",
-                 learning_rate=5e-4, pos_weight_value=3.0, batch_size=8,
-                 num_epochs=100, experiments_dir="experiments/training",
+                 learning_rate=0.0003, pos_weight_value=3.0, batch_size=16,
+                 num_epochs=80, experiments_dir="experiments/training",
                  num_prediction_samples=6,
                  save_history=True, verbose=True, use_augmentation=True,
                  optimizer_name="adamw", train_frac=0.8, val_frac=0.1,
@@ -187,7 +194,8 @@ def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs
     with the remaining 10% used as the test set).
 
     modality selects which crops from image_dir are used for training:
-    "both" (default), "iq", or "adp".
+    "both" (default), "iq", "adp", or "stacked" (iq and adp of the same
+    location as two input channels).
 
     metric selects the validation/test score: "boundary_f1" (default; ignores
     line thickness and allows a `tolerance`-pixel shift) or "dice" (pixel
@@ -216,6 +224,7 @@ def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs
         "use_augmentation": use_augmentation, "optimizer_name": optimizer_name,
         "momentum": momentum, "beta2": beta2 if optimizer_name.lower() != "sgd" else "",
         "train_frac": train_frac, "val_frac": val_frac, "modality": modality,
+        "in_channels": 2 if modality == "stacked" else 1,
         "metric": metric, "tolerance": tolerance if metric == "boundary_f1" else "",
         "use_lr_scheduler": use_lr_scheduler,
     })
@@ -257,11 +266,11 @@ def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs
     val_loader = DataLoader(val_set, batch_size=batch_size)
     test_loader = DataLoader(test_set, batch_size=batch_size)
 
-    #model = UNet(n_classes=1, n_channels=1).to(device)
+    #model = UNet(n_classes=1, n_channels=train_dataset.in_channels).to(device)
     model = smp.UnetPlusPlus(
         encoder_name="resnet18",      # the pretrained backbone
         encoder_weights="imagenet",   # use None to start from random weights
-        in_channels=1,                # your crops are grayscale
+        in_channels=train_dataset.in_channels,  # 1 (iq/adp/both) or 2 (stacked)
         classes=1,                    # one output: boundary / not boundary
     ).to(device)
 
@@ -348,8 +357,11 @@ def train_model(image_dir="datasets/cropped/SDA", mask_dir="datasets/cropped/PGs
         # Reuses the same best-checkpoint model already in memory, no need
         # to reload it a second time.
         plot_training_history(history, run_dir / "training_history.png", metric=metric)
+        channel_names = (("Input IQ", "Input ADP") if modality == "stacked"
+                         else (f"Input image ({modality})",))
         plot_prediction_grid(model, test_set, device, run_dir / "predictions.png",  # always test
-                              num_samples=num_prediction_samples)
+                              num_samples=num_prediction_samples,
+                              channel_names=channel_names)
         save_predicted_masks(model, plain_dataset, device, run_dir / "predicted_label", idx_to_split)
 
         if verbose:

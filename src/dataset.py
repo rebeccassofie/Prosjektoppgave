@@ -44,8 +44,11 @@ class SegmentationDataset(Dataset):
     "_full" images (the uncropped full-scan renders) are excluded; this
     dataset only yields fixed-size crops.
 
-    modality controls which crops are indexed: "both" (default), "iq", or
-    "adp".
+    modality controls which crops are indexed:
+      "iq" / "adp" -- one channel, only that modality
+      "both"       -- one channel; iq and adp crops are separate samples
+      "stacked"    -- two channels (channel 0 = iq, channel 1 = adp) from the
+                      SAME location in one sample, so the model sees both at once
     """
 
     def __init__(self, image_dir, mask_dir, transform=None, modality="both"):
@@ -53,17 +56,21 @@ class SegmentationDataset(Dataset):
         modality selects which crops to use: "both" (default, iq and adp),
         "iq", or "adp".
         """
-        if modality not in ("both", "iq", "adp"):
+        if modality not in ("both", "iq", "adp", "stacked"):
             raise ValueError(
-                f"modality must be 'both', 'iq', or 'adp', got {modality!r}"
+                f"modality must be 'both', 'iq', 'adp', or 'stacked', got {modality!r}"
             )
         self.image_dir = image_dir
         self.mask_dir = mask_dir
         self.transform = transform  # an Albumentations Compose, or None
         self.modality = modality
+        self.in_channels = 2 if modality == "stacked" else 1
         self.samples = self._build_index()
 
     def _build_index(self):
+        if self.modality == "stacked":
+            return self._build_stacked_index()
+
         samples = []
         skipped = []
 
@@ -86,8 +93,9 @@ class SegmentationDataset(Dataset):
                 continue
 
             samples.append({
-                "image_path": os.path.join(self.image_dir, filename),
+                "image_paths": [os.path.join(self.image_dir, filename)],
                 "mask_path": mask_path,
+                "name": filename,
             })
 
         if skipped:
@@ -98,21 +106,62 @@ class SegmentationDataset(Dataset):
 
         return samples
 
+    def _build_stacked_index(self):
+        """One sample per crop location that has BOTH an iq and an adp crop
+        (plus a mask). Channel order is always [iq, adp]."""
+        samples = []
+        skipped = []
+
+        for filename in sorted(os.listdir(self.image_dir)):
+            if not filename.lower().endswith(VALID_EXT):
+                continue
+            if "_full." in filename.lower():
+                continue
+            match = MODALITY_INFIX_RE.search(filename)
+            if match is None or match.group(1) != "adp":
+                continue  # index each location once, via its adp crop
+
+            adp_path = os.path.join(self.image_dir, filename)
+            iq_filename = MODALITY_INFIX_RE.sub("_iq", filename)
+            iq_path = os.path.join(self.image_dir, iq_filename)
+            mask_filename = MODALITY_INFIX_RE.sub("", filename)
+            mask_path = os.path.join(self.mask_dir, mask_filename)
+
+            if not (os.path.exists(iq_path) and os.path.exists(mask_path)):
+                skipped.append(filename)
+                continue
+
+            samples.append({
+                "image_paths": [iq_path, adp_path],
+                "mask_path": mask_path,
+                "name": MODALITY_INFIX_RE.sub("_stacked", filename),
+            })
+
+        if skipped:
+            print(f"Warning: {len(skipped)} adp crop(s) had no matching iq crop "
+                  f"or mask and were skipped: {skipped[:5]}"
+                  + (" ..." if len(skipped) > 5 else ""))
+
+        return samples
+
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
         sample = self.samples[idx]
 
-        # crops are single-channel grayscale, not RGB
-        image = np.array(Image.open(sample["image_path"]).convert("L"))
+        # each crop is single-channel grayscale; "stacked" puts iq and adp
+        # side by side as channels -> (H, W, C)
+        channels = [np.array(Image.open(p).convert("L")) for p in sample["image_paths"]]
+        image = np.stack(channels, axis=-1)
         mask = np.array(Image.open(sample["mask_path"]).convert("L"))
 
         if self.transform is not None:
             augmented = self.transform(image=image, mask=mask)
             image, mask = augmented["image"], augmented["mask"]
 
-        image = torch.from_numpy(image).float().unsqueeze(0) / 255.0  # (1, H, W)
+        # (H, W, C) -> (C, H, W); C = 1 for iq/adp/both, 2 for stacked
+        image = torch.from_numpy(np.ascontiguousarray(image)).float().permute(2, 0, 1) / 255.0
         mask = torch.from_numpy(mask).float()
         mask = (mask < 127).float().unsqueeze(0)  # 1 = boundary line, 0 = background
 
